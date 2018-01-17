@@ -1,4 +1,6 @@
 lost+found/
 MNIST_data/
 sample-notebooks/
-
+env/
+.serverless/
+node_modules/

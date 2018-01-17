@@ -1,0 +1,21 @@
+service: DeepLearningLambdas
+
+provider:
+  name: aws
+  runtime: python2.7
+  stage: dev
+  region: us-west-1
+
+
+functions:
+  Lenet5Predict:
+    include: src/**
+    handler: src.lenet_predictor.handler
+    events:
+      - http:
+          path: lenet5_predict
+          method: post
+          cors: true
+
+plugins:
+  - serverless-python-requirements
