@@ -57,7 +57,7 @@ def predict(X, parameters):
     prediction = sess.run(p, feed_dict={x: X})
 
     for i in range(m):
-        print "Prediction:", prediction[i]
+        print("Prediction:", prediction[i])
 
     return prediction
 

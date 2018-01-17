@@ -4,3 +4,4 @@ sample-notebooks/
 env/
 .serverless/
 node_modules/
+.ephemeral
