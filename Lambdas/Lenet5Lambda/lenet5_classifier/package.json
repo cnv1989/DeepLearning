@@ -1,0 +1,20 @@
+{
+  "name": "lenet5lambda",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "serverless": "serverless",
+    "sls": "sls"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "serverless": "^1.25.0",
+    "serverless-python-individually": "^0.1.7"
+  },
+  "devDependencies": {
+    "serverless-ephemeral": "^0.7.2",
+    "serverless-python-requirements": "^3.2.2"
+  }
+}
