@@ -22,6 +22,7 @@ Setups to setup and deploy lambdas into AWS account
 2. To deploy each lambda function `cd` into the corresponding directory and perform following operations.
 
     `npm install`
+
     `npm run sls deploy -- -v`
 
 3. Once the two functions are deployed you can test the API using
