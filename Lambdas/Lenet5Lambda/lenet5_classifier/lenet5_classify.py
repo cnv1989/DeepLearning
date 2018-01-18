@@ -9,11 +9,11 @@ def forward_propagation_for_predict(X, parameters):
     """
     Arguments:
     X -- input dataset placeholder, of shape (input size, number of examples)
-    parameters -- python dictionary containing your parameters "W1", "b1", "W2", "b2", "W3", "b3", "W4", "b4"
-                  the shapes are given in initialize_parameters
+    parameters -- python dictionary containing your parameters
+                  "W1", "b1", "W2", "b2", "W3", "b3", "W4", "b4", "W5", "b5"
 
     Returns:
-    Z4 -- the output of the last LINEAR unit
+    Z5 -- the output of the last LINEAR unit
     """
 
     W1 = parameters['W1']
@@ -54,12 +54,8 @@ def predict(X, parameters):
     Z5 = forward_propagation_for_predict(x, parameters)
     p = tf.argmax(Z5)
 
-    print(X.shape)
     sess = tf.Session()
     prediction = sess.run(p, feed_dict={x: X})
-
-    for i in range(m):
-        print("Prediction:", prediction[i])
 
     return prediction
 
