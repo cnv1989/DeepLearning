@@ -33,8 +33,3 @@ provider:
 functions:
     Lenet5Classify:
         handler: lenet5_classify.handler
-        events:
-            - http:
-                path: lenet5predict
-                method: post
-                cors: true
