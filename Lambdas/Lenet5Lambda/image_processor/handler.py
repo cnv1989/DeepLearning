@@ -45,11 +45,15 @@ def process(event, context):
         Payload=payload
     )
 
-    response = invoke_response['Payload'].read()
+    response = json.loads(invoke_response['Payload'].read())
+
+    json_data = json.loads(response['body'])
 
     response = {
         "statusCode": 200,
-        "body": json.dumps(response)
+        "body": json.dumps({
+            "Predicted Number": json_data['data'][0]
+        })
     }
 
     return response

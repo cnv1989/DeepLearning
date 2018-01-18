@@ -1,7 +1,3 @@
-import sys
-sys.path.insert(0, './tfpackage')
-
-
 import json
 import numpy as np
 import tensorflow as tf
@@ -98,6 +94,6 @@ def handler(event, context):
             'isBase64Encoded': False,
             'statusCode': 200,
             'body': json.dumps({
-                'data': json.dumps(prediction)
+                'data': prediction.tolist()
             })
         }

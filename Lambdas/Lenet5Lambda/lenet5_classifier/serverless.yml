@@ -20,7 +20,6 @@ custom:
             - packager:
                 name: tensorflow
                 version: 1.4.0
-              directory: tfpackage
 
 
 
