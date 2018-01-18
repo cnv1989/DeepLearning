@@ -27,4 +27,4 @@ Setups to setup and deploy lambdas into AWS account
 
 3. Once the two functions are deployed you can test the API using
 
-    `curl -X POST -H "Content-Type: application/json" -d '{"image" : "'"$( base64 /path/to/minst/image.png )"'"}' https://###.us-west-1.amazonaws.com/dev/predict`
+    `curl -X POST -H "Content-Type: application/json" -d '{"image" : "'"$( base64 /path/to/mnist/image.png )"'"}' https://###.us-west-1.amazonaws.com/dev/predict`
