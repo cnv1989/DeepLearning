@@ -1,0 +1,41 @@
+service: Lenet5Classifier
+
+plugins:
+  - serverless-ephemeral
+
+package:
+    exclude:
+        - package.json
+        - package-lock.json
+        - README.md
+        - node_modules/**
+        - .ephemeral/**
+        - env/**
+        - .requirements.zip
+        - requirements.txt
+
+custom:
+    ephemeral:
+        libraries:
+            - packager:
+                name: tensorflow
+                version: 1.4.0
+              directory: tfpackage
+
+
+
+provider:
+    name: aws
+    runtime: python2.7
+    stage: dev
+    region: us-west-1
+
+
+functions:
+    Lenet5Classify:
+        handler: lenet5_classify.handler
+        events:
+            - http:
+                path: lenet5predict
+                method: post
+                cors: true

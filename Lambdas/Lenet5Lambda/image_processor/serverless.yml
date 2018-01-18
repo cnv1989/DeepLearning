@@ -1,0 +1,41 @@
+service: ImageProcessor
+
+package:
+    exclude:
+        - package.json
+        - package-lock.json
+        - README.md
+        - node_modules/**
+        - .ephemeral/**
+        - env/**
+        - .requirements.zip
+        - requirements.txt
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    zip: true
+
+provider:
+    name: aws
+    runtime: python2.7
+    stage: dev
+    region: us-west-1
+    iamRoleStatements:
+        - Effect: Allow
+          Action:
+              - lambda:InvokeFunction
+          Resource: "arn:aws:lambda:*:*:*:*"
+
+
+functions:
+    ImageProcessor:
+        handler: handler.process
+        events:
+            - http:
+                path: predict
+                method: post
+                cors: true
