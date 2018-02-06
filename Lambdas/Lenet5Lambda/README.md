@@ -1,4 +1,4 @@
-# Serverless REST API to classify MINST images
+# Serverless REST API to classify MNIST images
 
 This repo constains serverless implementation for classifying MINST handwritten digit images into numerical output.
 
