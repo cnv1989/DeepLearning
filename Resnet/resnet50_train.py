@@ -1,5 +1,4 @@
 import keras
-import h5py
 from keras import layers
 from keras import initializers
 from keras.datasets import cifar10
@@ -114,12 +113,11 @@ if __name__ == "__main__":
     y_test = keras.utils.to_categorical(y_test, 10)
     resnet50 = Resnet50((32, 32, 3), 10)
     resnet50.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    for i in range(5):
-        resnet50.fit(x_train, y_train, epochs = 10, batch_size = 64)
-        # serialize model to JSON
-        model_json = resnet50.to_json()
-        with open("resnet50.json", "w") as json_file:
-            json_file.write(model_json)
-        # serialize weights to HDF5
-        resnet50.save_weights("resnet50.h5")
-        print("Saved model to disk")
+    resnet50.fit(x_train, y_train, epochs = 1, batch_size = 128)
+    # serialize model to JSON
+    model_json = resnet50.to_json()
+    with open("resnet50.json", "w") as json_file:
+        json_file.write(model_json)
+    # serialize weights to HDF5
+    model.save_weights("resnet50.h5")
+    print("Saved model to disk")

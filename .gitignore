@@ -6,4 +6,4 @@ env/
 node_modules/
 .ephemeral
 .DS_Store
-.ipynb_checkpoints/
+env/
