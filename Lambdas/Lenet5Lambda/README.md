@@ -15,7 +15,7 @@ Two lambda functions are implemented to work withing the code size limts enforce
 Steps to setup and deploy lambdas into AWS account
 
 
-1. Configure aws credentials.
+1. Configure aws credentials. For quick implementation, create an IAM user with Admin privilages and enable programmatic access. Use the generated access keys to configure aws on your machine using
 
     `aws configure`
 
