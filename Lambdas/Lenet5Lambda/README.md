@@ -12,7 +12,7 @@ Two lambda functions are implemented to work withing the code size limts enforce
 
 # Setup
 
-Setups to setup and deploy lambdas into AWS account
+Steps to setup and deploy lambdas into AWS account
 
 
 1. Configure aws credentials.
