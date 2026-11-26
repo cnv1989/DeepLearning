@@ -23,6 +23,9 @@ a laptop CPU in minutes.
                   evaluate.py, sample.py work with every checkpoint
 ```
 
+**New to this?** The [guides in `docs/`](docs/README.md) explain every component
+(tokenization, the model, pretraining, fine-tuning, RL and more) step by step.
+
 ## Quick start (CPU, about 10 minutes)
 
 ```bash
@@ -46,7 +49,7 @@ python sample.py --ckpt out/sft/ckpt.pt --chat --prompt "Reverse: flower" --temp
 |---|---|
 | Pretrain `tiny` (0.86M params, 1,500 steps, 6.5 min) | validation loss **1.59**, perplexity 4.9 (the earlier GPT-2-style model reached 1.91 at the same size) |
 | SFT on synthetic tasks (1,500 steps, 2 min) | accuracy on unseen words **0% → 100%** (uppercase, reverse, repeat, first letter) |
-| GRPO on open-ended text (100 steps) | reward 1.78 → 1.85 (out of 2.0) |
+| GRPO on open-ended text (100 steps) | reward 1.78 → 1.83 (out of 2.0) |
 | GRPO on tasks, from a half-trained SFT model | stable, but no accuracy gain in 400 steps (23.5% → 22.5%); see [GRPO tips](#grpo-tips) |
 
 Pretraining output after 6 minutes:
@@ -220,7 +223,7 @@ A Llama-style decoder-only transformer:
 | `reward_model.py`, `dpo.py`, `preferences.py` | Reward model, DPO loss, preference data |
 | **Tests: `tests/`** | `pytest` (21 tests: tokenizers, KV cache, causality, loss masking, RL losses) |
 
-Suggested reading order: `slm/model.py` → `train.py` + `slm/trainer.py` →
+For explanations of each part, see the [guides](docs/README.md). Suggested code reading order: `slm/model.py` → `train.py` + `slm/trainer.py` →
 `slm/sft.py` → `slm/rl/grpo.py` + `train_grpo.py`.
 
 ## Tests
