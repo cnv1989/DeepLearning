@@ -1,5 +1,11 @@
 ## This repo contains various deep learning model implementations
 
+# SmallLM/
+
+### [README](https://github.com/cnv1989/DeepLearning/tree/master/SmallLM)
+
+PyTorch implementation of a small GPT-style language model, built from scratch, with reinforcement-learning fine-tuning: GRPO against rule-based or learned rewards, a Bradley-Terry reward model, and DPO on preference pairs. The tiny preset trains on a CPU in minutes.
+
 # Lambdas/
 
 Contains code that host trained models on AWS lambda. The lambdas are exposed via API gateway to enable classification trough APIs
