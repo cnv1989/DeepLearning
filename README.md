@@ -1,5 +1,11 @@
 ## This repo contains various deep learning model implementations
 
+# Drone/
+
+### [README](https://github.com/cnv1989/DeepLearning/tree/master/Drone)
+
+A quadcopter simulator built from scratch in Python for learning how drones fly: rigid-body physics, motors and mixing, battery, noisy sensors, state estimation (complementary and Kalman filters), a cascaded PID flight controller, A* path planning, flight modes and failsafes. Every component has its own guide in `Drone/docs/`.
+
 # SmallLM/
 
 ### [README](https://github.com/cnv1989/DeepLearning/tree/master/SmallLM)
