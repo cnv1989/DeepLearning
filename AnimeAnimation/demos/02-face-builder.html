@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anime Face Builder</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 3 · Face, eyes and expressions</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas></div>
+      <div class="notes">
+        <h3>Exercises</h3>
+        <ol>
+          <li>Make the face look <b>older</b> using only three sliders. (Hint: eye size, eye line, chin.)</li>
+          <li>Switch eye style between <i>shoujo</i> and <i>shounen</i> with every other setting the same. What changes in how the character reads?</li>
+          <li>Click through the expressions. The eyebrows and mouth carry most of the emotion, even when the eyes barely change.</li>
+          <li>Turn on <b>construction</b> to see the circle and jaw the head is built from. Draw these first when you sketch in Krita or Clip Studio.</li>
+        </ol>
+        <p>Code: <code>src/character/face.js</code>, <code>eyes.js</code>, <code>mouth.js</code>.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, slider, heading, select, checkbox, buttons } from './shared/ui.js';
+import { drawAnimeHead, DEFAULT_FACE, EXPRESSIONS } from '../src/character/face.js';
+import { EYE_STYLES, blinkOpenness } from '../src/character/eyes.js';
+
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, 720, 640);
+const p = { ...DEFAULT_FACE, x: 360, y: 260, scale: 1.55, construction: false, blinking: true };
+
+function construction() {
+  const R = 100 * p.scale;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.strokeStyle = 'rgba(60,140,255,0.8)';
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -R * 1.2); ctx.lineTo(0, R * 1.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-R * 1.2, R * p.eyeLine); ctx.lineTo(R * 1.2, R * p.eyeLine); ctx.stroke();
+  ctx.fillStyle = 'rgba(60,140,255,0.9)';
+  ctx.font = '12px system-ui';
+  ctx.fillText('eye line', R * 1.05, R * p.eyeLine - 6);
+  ctx.fillText('cranium', R * 0.72, -R * 0.75);
+  ctx.restore();
+}
+
+function render(now = performance.now()) {
+  clear(ctx);
+  const open = p.blinking ? blinkOpenness(now / 1000) : 1;
+  drawAnimeHead(ctx, { ...p, openness: open });
+  if (p.construction) construction();
+  requestAnimationFrame(render);
+}
+
+const panel = document.getElementById('controls');
+heading(panel, 'Expression');
+buttons(panel, Object.keys(EXPRESSIONS).map((name) => ({ label: name, onClick: () => { p.expression = name; } })));
+heading(panel, 'Eyes');
+select(panel, { label: 'Eye style', options: Object.keys(EYE_STYLES), value: p.eyeStyle, onChange: (v) => (p.eyeStyle = v) });
+slider(panel, { label: 'Eye size', min: 0.5, max: 1.6, step: 0.01, value: p.eyeSize, onInput: (v) => (p.eyeSize = v) });
+slider(panel, { label: 'Eye spacing', min: 0.3, max: 0.6, step: 0.01, value: p.eyeSpacing, onInput: (v) => (p.eyeSpacing = v) });
+slider(panel, { label: 'Eye line (lower = younger)', min: 0, max: 0.5, step: 0.01, value: p.eyeLine, onInput: (v) => (p.eyeLine = v) });
+slider(panel, { label: 'Look left/right', min: -1, max: 1, step: 0.05, value: 0, onInput: (v) => (p.look = { ...p.look, x: v }) });
+checkbox(panel, { label: 'Auto blink', checked: true, onChange: (v) => (p.blinking = v) });
+heading(panel, 'Face shape');
+slider(panel, { label: 'Chin pointiness', min: 0, max: 1, step: 0.01, value: p.chin, onInput: (v) => (p.chin = v) });
+slider(panel, { label: 'Jaw width', min: 0.6, max: 1, step: 0.01, value: p.jawWidth, onInput: (v) => (p.jawWidth = v) });
+slider(panel, { label: 'Blush', min: 0, max: 1, step: 0.05, value: p.blush, onInput: (v) => (p.blush = v) });
+slider(panel, { label: 'Head tilt', min: -20, max: 20, step: 1, value: 0, onInput: (v) => (p.tilt = v) });
+heading(panel, 'Hair & color');
+select(panel, { label: 'Hair style', options: ['bob', 'long', 'spiky'], value: p.hairStyle, onChange: (v) => (p.hairStyle = v) });
+checkbox(panel, { label: 'Ahoge (antenna strand)', checked: true, onChange: (v) => (p.ahoge = v) });
+for (const [key, label] of [['hairColor', 'Hair'], ['eyeColor', 'Eyes'], ['skin', 'Skin']]) {
+  const wrap = document.createElement('label');
+  wrap.className = 'check';
+  const input = Object.assign(document.createElement('input'), { type: 'color', value: p[key] });
+  input.addEventListener('input', () => (p[key] = input.value));
+  wrap.append(input, document.createTextNode(label));
+  panel.append(wrap);
+}
+checkbox(panel, { label: 'Show construction lines', checked: false, onChange: (v) => (p.construction = v) });
+render();
+</script>
+</body>
+</html>

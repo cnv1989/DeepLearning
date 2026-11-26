@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hair Physics Lab</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 7 · Secondary motion: hair, ribbons, follow-through</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas><div class="hud" id="hud"></div></div>
+      <div class="notes">
+        <h3>What to notice</h3>
+        <ul>
+          <li><b>Move your mouse</b> over the canvas, or turn on auto-sway. The head is the <i>primary</i> action. Twin tails, ribbons and the ahoge <b>drag behind</b>, <b>overshoot</b> and <b>settle</b>. That lag is secondary motion.</li>
+          <li><b>Stiffness</b> controls how quickly a strand returns to its styled shape. Use high stiffness for short, gelled hair and low stiffness for long, silky hair.</li>
+          <li><b>Damping</b> controls how quickly the wobble dies out. Low damping gives a bouncy, cartoony feel.</li>
+          <li>In Blender you get this from cloth or spring bones, in Live2D from its "Physics" settings, and in Spine from physics constraints. When you hand-draw, you <i>offset</i> the hair drawings by a frame or two behind the head.</li>
+        </ul>
+        <p>Code: <code>src/physics/spring.js</code> (Spring, Strand).</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, slider, heading, checkbox } from './shared/ui.js';
+import { drawAnimeHead, drawAhoge, DEFAULT_FACE } from '../src/character/face.js';
+import { Spring, Strand } from '../src/physics/spring.js';
+import { shadowColor } from '../src/utils/color.js';
+
+const W = 860, H = 620;
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, W, H);
+const hud = document.getElementById('hud');
+const s = { stiffness: 0.25, damping: 0.04, gravity: 600, auto: true, ghosts: false };
+const HAIR = '#ffb347', LINE = '#4a2b2b';
+const scale = 1.05, R = 100 * scale;
+
+const target = { x: W / 2, y: 250 };
+const head = { x: W / 2, y: 250 };
+const springX = new Spring({ stiffness: 90, damping: 14, value: head.x });
+const springY = new Spring({ stiffness: 90, damping: 14, value: head.y });
+const ahoge = new Spring({ stiffness: 60, damping: 3 });
+let strands = [];
+
+function makeStrands() {
+  const mk = (side) => new Strand({ x: head.x + side * R * 1.05, y: head.y - R * 0.6 }, {
+    segments: 10, length: 300, restAngle: Math.PI / 2 - side * 0.25, curl: side * 0.03,
+    stiffness: s.stiffness, gravity: s.gravity, drag: s.damping,
+  });
+  strands = [mk(-1), mk(1)];
+}
+makeStrands();
+
+canvas.addEventListener('pointermove', (e) => {
+  if (s.auto) return;
+  const r = canvas.getBoundingClientRect();
+  target.x = ((e.clientX - r.left) / r.width) * W;
+  target.y = Math.min(380, Math.max(160, ((e.clientY - r.top) / r.height) * H));
+});
+
+function drawStrand(pts, width) {
+  // Ribbon of decreasing width along the chain (a tapering lock of hair).
+  const left = [], right = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const ang = Math.atan2(b.y - a.y, b.x - a.x) + Math.PI / 2;
+    const w = width * (1 - i / pts.length) ** 0.7;
+    left.push([pts[i].x + Math.cos(ang) * w, pts[i].y + Math.sin(ang) * w]);
+    right.push([pts[i].x - Math.cos(ang) * w, pts[i].y - Math.sin(ang) * w]);
+  }
+  const outline = [...left, ...right.reverse()];
+  ctx.beginPath();
+  outline.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fillStyle = HAIR;
+  ctx.fill();
+  // shadow side
+  ctx.save();
+  ctx.clip();
+  ctx.beginPath();
+  right.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.lineWidth = width * 0.9;
+  ctx.strokeStyle = shadowColor(HAIR);
+  ctx.stroke();
+  ctx.restore();
+  ctx.beginPath();
+  outline.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  // hair tie
+  ctx.fillStyle = '#e0457b';
+  ctx.beginPath();
+  ctx.arc(pts[0].x, pts[0].y + 6, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+let last = performance.now(), tAll = 0;
+function frame(now) {
+  const dt = Math.min(1 / 30, (now - last) / 1000);
+  last = now;
+  tAll += dt;
+  if (s.auto) {
+    // Snappy pose-to-pose head motion: hold, then quick move (very anime).
+    const beat = Math.floor(tAll / 1.1) % 4;
+    target.x = W / 2 + [-160, 140, -60, 180][beat];
+    target.y = 250 + [0, -30, 40, 10][beat];
+  }
+  const prevX = head.x;
+  head.x = springX.step(target.x, dt);
+  head.y = springY.step(target.y, dt);
+  const vx = (head.x - prevX) / dt;
+  const sway = ahoge.step(-vx * 0.0012, dt);
+  const tilt = Math.max(-12, Math.min(12, vx * 0.01));
+
+  if (!s.ghosts) clear(ctx);
+  else { ctx.fillStyle = 'rgba(128,128,128,0.06)'; ctx.fillRect(0, 0, W, H); }
+
+  const rot = (tilt * Math.PI) / 180;
+  strands.forEach((st, i) => {
+    const side = i === 0 ? -1 : 1;
+    const ax = R * 1.05 * side, ay = -R * 0.6;
+    const root = { x: head.x + ax * Math.cos(rot) - ay * Math.sin(rot), y: head.y + ax * Math.sin(rot) + ay * Math.cos(rot) };
+    st.stiffness = s.stiffness;
+    st.drag = s.damping;
+    st.gravity = s.gravity;
+    drawStrand(st.step(root, dt, rot), 32);
+  });
+  drawAnimeHead(ctx, {
+    ...DEFAULT_FACE, x: head.x, y: head.y, scale, hairColor: HAIR, hairStyle: 'bob', eyeColor: '#2f9e6b',
+    expression: Math.abs(vx) > 600 ? 'surprised' : 'smile', tilt, ahoge: false,
+    look: { x: Math.max(-1, Math.min(1, (target.x - head.x) / 80)), y: 0 },
+  });
+  ctx.save();
+  ctx.translate(head.x, head.y);
+  ctx.rotate(rot);
+  drawAhoge(ctx, R, HAIR, LINE, sway);
+  ctx.restore();
+  hud.textContent = `head speed ${Math.abs(vx).toFixed(0)} px/s · ahoge sway ${(sway * 57.3).toFixed(1)}°`;
+  requestAnimationFrame(frame);
+}
+
+const panel = document.getElementById('controls');
+heading(panel, 'Motion');
+checkbox(panel, { label: 'Auto pose-to-pose sway', checked: true, onChange: (v) => (s.auto = v) });
+checkbox(panel, { label: 'Motion trails', checked: false, onChange: (v) => (s.ghosts = v) });
+heading(panel, 'Hair physics');
+slider(panel, { label: 'Stiffness (style memory)', min: 0.02, max: 0.9, step: 0.01, value: s.stiffness, onInput: (v) => (s.stiffness = v) });
+slider(panel, { label: 'Damping (air drag)', min: 0, max: 0.3, step: 0.005, value: s.damping, onInput: (v) => (s.damping = v) });
+slider(panel, { label: 'Gravity', min: 0, max: 1500, step: 10, value: s.gravity, onInput: (v) => (s.gravity = v) });
+heading(panel, 'Ahoge spring');
+slider(panel, { label: 'Ahoge stiffness', min: 10, max: 300, step: 5, value: 60, onInput: (v) => (ahoge.k = v) });
+slider(panel, { label: 'Ahoge damping', min: 0.5, max: 20, step: 0.5, value: 3, onInput: (v) => (ahoge.c = v) });
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

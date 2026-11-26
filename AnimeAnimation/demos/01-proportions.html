@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Head-Height Proportions</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 2 · Proportions in heads</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas></div>
+      <div class="notes">
+        <h3>What to notice</h3>
+        <ul>
+          <li>The <b>number of heads</b> sets the age and tone of a character before you draw a single detail.</li>
+          <li>Chibi figures lose leg length first; tall figures gain it. The torso changes much less.</li>
+          <li>The white line marks the <b>eye line</b>, near the vertical middle of the head. In realistic drawing it sits a bit higher, so the face reads more adult.</li>
+        </ul>
+        <p>Code: <code>src/character/proportions.js</code>. Try <code>proportionLandmarks(6.5)</code> in the console.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, slider, heading, checkbox, cssVar } from './shared/ui.js';
+import { drawProportionFigure, PROPORTION_PRESETS, proportionLandmarks } from '../src/character/proportions.js';
+
+window.proportionLandmarks = proportionLandmarks;
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, 960, 540);
+const state = { heads: 6.5, height: 440, grid: true };
+
+function render() {
+  clear(ctx);
+  canvas.style.color = cssVar('--ink');
+  const ground = 490;
+  const entries = Object.entries(PROPORTION_PRESETS);
+  entries.forEach(([name, h], i) => {
+    drawProportionFigure(ctx, {
+      x: 90 + i * 140, groundY: ground, height: state.height * (h / 8.5) ** 0.35 * 0.92,
+      heads: h, grid: state.grid, label: `${name} (${h})`, color: '#b9a7f2',
+    });
+  });
+  drawProportionFigure(ctx, {
+    x: 850, groundY: ground, height: state.height, heads: state.heads, grid: state.grid,
+    label: `yours (${state.heads})`, color: '#e86f9f',
+  });
+}
+
+const panel = document.getElementById('controls');
+heading(panel, 'Your character');
+slider(panel, { label: 'Heads tall', min: 2, max: 9, step: 0.5, value: state.heads, onInput: (v) => { state.heads = v; render(); } });
+slider(panel, { label: 'Figure height (px)', min: 200, max: 460, value: state.height, onInput: (v) => { state.height = v; render(); } });
+checkbox(panel, { label: 'Show head-unit grid', checked: true, onChange: (v) => { state.grid = v; render(); } });
+render();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+</script>
+</body>
+</html>

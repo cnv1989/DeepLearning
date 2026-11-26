@@ -32,3 +32,9 @@ Takes YAD2K configuration and weights and converts to Keras. Applies box filteri
 ![Street 1](https://github.com/cnv1989/DeepLearning/blob/master/YOLO/out/testAWS.jpg)
 ![Street 2](https://github.com/cnv1989/DeepLearning/blob/master/YOLO/out/testaws2.jpg)
 ![Street 3](https://github.com/cnv1989/DeepLearning/blob/master/YOLO/out/test.jpg)
+
+# AnimeAnimation/
+
+### [Course README](https://github.com/cnv1989/DeepLearning/tree/master/AnimeAnimation)
+
+A hands-on course for learning anime-style character design and animation: 10 lessons, 9 interactive browser demos, and reusable JavaScript components (easing/keyframes, on-twos timing, onion skin, cel shading, anime faces and eyes, lip-sync, hair physics, bone rigs, walk cycles, action effects). Run `cd AnimeAnimation && python3 -m http.server 8000` and open http://localhost:8000.

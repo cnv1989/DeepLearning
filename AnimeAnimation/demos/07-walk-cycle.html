@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walk Cycle Rig</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 8 · Rigging and the walk cycle</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas><div class="hud" id="hud"></div></div>
+      <div class="notes">
+        <h3>What to notice</h3>
+        <ul>
+          <li>The rig is a <b>bone hierarchy</b>: hips → spine → neck → head, and hips → thigh → shin → foot. Rotating a thigh carries the shin and foot with it. That is forward kinematics (FK).</li>
+          <li>The four key poses of a step are <b>contact, down, passing, up</b>. The body is lowest on <i>down</i> and highest on <i>up</i>. Nothing animates the bob directly: it comes from planting the lowest foot on the ground.</li>
+          <li>Try the <b>walk styles</b>. Stride, lean, arm swing and knee lift alone give tired, sneaky and confident walks. Personality comes from the poses.</li>
+          <li>Anime walks are often <b>8 drawings on threes</b> (one second per cycle) to save budget. Set "drawings per cycle" to 8 and "animate on" to threes.</li>
+        </ul>
+        <p>Code: <code>src/rig/skeleton.js</code>, <code>src/rig/walkCycle.js</code>.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, slider, heading, select, checkbox, buttons } from './shared/ui.js';
+import { createHumanoid } from '../src/rig/skeleton.js';
+import { walkPose, plantOnGround, WALK_STYLES } from '../src/rig/walkCycle.js';
+import { drawOnionSkin } from '../src/core/onionSkin.js';
+import { stepTime } from '../src/core/keyframes.js';
+
+const W = 900, H = 520, GROUND = 450;
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, W, H);
+const hud = document.getElementById('hud');
+const s = { style: 'normal', cycle: 1.0, onN: 2, onion: false, bones: false, playing: true, t: 0 };
+const skel = createHumanoid(340);
+
+const NEAR = { skin: '#ffe3d3', top: '#2f4a8a', legs: '#3b3b4f', shoe: '#7a3b2e', hair: '#3a2a4a' };
+const FAR = { skin: '#e8c4b8', top: '#22365f', legs: '#2a2a38', shoe: '#5a2b22' };
+
+function limb(c, b, color) {
+  c.strokeStyle = '#1f1822';
+  c.lineCap = 'round';
+  c.lineWidth = b.width + 4;
+  c.beginPath(); c.moveTo(b.start.x, b.start.y); c.lineTo(b.end.x, b.end.y); c.stroke();
+  c.strokeStyle = color;
+  c.lineWidth = b.width;
+  c.stroke();
+}
+
+function drawFigure(c, t) {
+  const phase = (t / s.cycle) % 1;
+  skel.position = { x: 450, y: 0 };
+  skel.setPose(walkPose(phase, WALK_STYLES[s.style]));
+  plantOnGround(skel, GROUND);
+  const g = (n) => skel.get(n);
+  // Far side first (it's behind the body), then torso, then near side.
+  for (const n of ['upperArmR', 'foreArmR']) limb(c, g(n), FAR.top);
+  limb(c, g('handR'), FAR.skin);
+  limb(c, g('thighR'), FAR.legs); limb(c, g('shinR'), FAR.legs); limb(c, g('footR'), FAR.shoe);
+  limb(c, g('thighL'), NEAR.legs); limb(c, g('shinL'), NEAR.legs); limb(c, g('footL'), NEAR.shoe);
+  limb(c, g('neck'), NEAR.skin);
+  limb(c, g('spine'), NEAR.top);
+  // Head: circle + hair cap + one big eye (side view)
+  const h = g('head');
+  const hx = (h.start.x + h.end.x) / 2, hy = (h.start.y + h.end.y) / 2;
+  c.save();
+  c.translate(hx, hy);
+  c.rotate(h.worldAngle + Math.PI / 2);
+  c.fillStyle = NEAR.skin; c.strokeStyle = '#1f1822'; c.lineWidth = 2.5;
+  c.beginPath(); c.ellipse(0, 0, h.width * 0.5, h.length * 0.58, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+  c.fillStyle = NEAR.hair;
+  c.beginPath(); c.ellipse(-4, -8, h.width * 0.56, h.length * 0.52, 0, Math.PI * 0.95, Math.PI * 2.1); c.fill(); c.stroke();
+  c.fillStyle = '#1f1822';
+  c.beginPath(); c.ellipse(h.width * 0.25, 6, 4, 8, 0, 0, Math.PI * 2); c.fill();
+  c.restore();
+  for (const n of ['upperArmL', 'foreArmL']) limb(c, g(n), NEAR.top);
+  limb(c, g('handL'), NEAR.skin);
+
+  if (s.bones && c === ctx) {
+    skel.forEach((b) => {
+      c.strokeStyle = '#ff3d7f'; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(b.start.x, b.start.y); c.lineTo(b.end.x, b.end.y); c.stroke();
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(b.start.x, b.start.y, 4, 0, Math.PI * 2); c.fill(); c.stroke();
+    });
+  }
+  return phase;
+}
+
+function keyName(phase) {
+  const q = (phase * 2) % 1;
+  if (q < 0.0625 || q > 0.9375) return 'CONTACT';
+  if (q < 0.1875) return 'DOWN';
+  if (q < 0.3125) return 'PASSING';
+  if (q < 0.4375) return 'UP';
+  return '…in-between';
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (s.playing) s.t += dt;
+  // Quantize to "drawings": cycle split into N drawings, each held on N's.
+  const drawingsPerCycle = Number(drawSel.value);
+  const tq = Math.floor((s.t / s.cycle) * drawingsPerCycle) / drawingsPerCycle * s.cycle;
+  clear(ctx);
+  // Scrolling ground ("treadmill" / background pan)
+  const leg = skel.get('thighL').length * 2;
+  const style = WALK_STYLES[s.style];
+  const speed = (4 * leg * Math.sin(((style.stride ?? 25) * Math.PI) / 180)) / s.cycle;
+  ctx.fillStyle = 'rgba(128,120,150,0.22)';
+  ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.strokeStyle = 'rgba(128,120,150,0.6)';
+  ctx.lineWidth = 2;
+  const off = (tq * speed) % 80;
+  for (let x = -off; x < W; x += 80) { ctx.beginPath(); ctx.moveTo(x, GROUND + 8); ctx.lineTo(x + 30, GROUND + 8); ctx.stroke(); }
+  if (s.onion) drawOnionSkin(ctx, drawFigure, tq, { before: 2, after: 1, step: s.cycle / drawingsPerCycle, alpha: 0.35 });
+  const phase = drawFigure(ctx, tq);
+  ctx.fillStyle = '#d94f8a';
+  ctx.font = '700 16px system-ui';
+  ctx.fillText(keyName(phase), 24, 36);
+  hud.textContent = `phase ${phase.toFixed(2)} · ${drawingsPerCycle} drawings per cycle · cycle ${s.cycle.toFixed(2)}s (= ${Math.round(s.cycle * 24)} frames, each drawing held ${(s.cycle * 24 / drawingsPerCycle).toFixed(1)} frames)`;
+  requestAnimationFrame(frame);
+}
+
+const panel = document.getElementById('controls');
+heading(panel, 'Playback');
+buttons(panel, [
+  { label: '⏯ Play / pause', primary: true, onClick: () => (s.playing = !s.playing) },
+  { label: 'next drawing ▶', onClick: () => { s.playing = false; s.t += s.cycle / Number(drawSel.value); } },
+]);
+const drawSel = select(panel, { label: 'Drawings per cycle', options: [['8', '8 (budget TV)'], ['12', '12 (on twos)'], ['16', '16'], ['24', '24 (on ones, smooth)'], ['120', 'continuous (3D-like)']], value: '12' });
+slider(panel, { label: 'Cycle length (s)', min: 0.6, max: 1.6, step: 0.05, value: s.cycle, onInput: (v) => (s.cycle = v) });
+heading(panel, 'Personality');
+select(panel, { label: 'Walk style', options: Object.keys(WALK_STYLES), value: s.style, onChange: (v) => (s.style = v) });
+heading(panel, 'View');
+checkbox(panel, { label: 'Show bones', checked: false, onChange: (v) => (s.bones = v) });
+checkbox(panel, { label: 'Onion skin', checked: false, onChange: (v) => (s.onion = v) });
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

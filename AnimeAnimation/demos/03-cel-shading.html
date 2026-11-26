@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cel Shading Lab</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 4 · Line art and cel shading</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas></div>
+      <div class="notes">
+        <h3>What to notice</h3>
+        <ul>
+          <li><b>Left:</b> smooth (realistic) shading. <b>Middle:</b> cel shading, the same lighting split into flat bands with a hard edge. <b>Right:</b> a 2D shape shaded the way you'd paint it by hand.</li>
+          <li>Drag on the canvas to move the light. The shadow edge moves with it, but it stays one clean shape.</li>
+          <li>Turn <b>hue-shifted shadows</b> off and the shadows go muddy and grey. Studio color designers choose a shadow color for each base color. The swatches below show the pairs.</li>
+          <li>The <b>threshold</b> slider is the "Color Ramp" position in a Blender toon shader. Raising it gives more shadow and a moodier look.</li>
+        </ul>
+        <p>Code: <code>src/effects/celShading.js</code>, <code>src/utils/color.js</code>.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, slider, heading, checkbox, select } from './shared/ui.js';
+import { renderShadedSphere, celShadeShape } from '../src/effects/celShading.js';
+import { shadowColor, highlightColor, SKIN_SHADOW } from '../src/utils/color.js';
+
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, 900, 560);
+const s = { light: [-0.6, -0.7, 0.6], bands: 2, threshold: 0.1, highlight: true, rim: false, hueShift: true, base: '#f6a5c0', outline: 3 };
+const SWATCHES = { skin: '#ffe3d3', hair: '#f28fb1', 'school blazer': '#2f4a8a', 'yellow ribbon': '#ffd34d', 'green skirt': '#4f9a6a', 'white shirt': '#f4f4f8' };
+
+function blob(c) { // a hand-drawn bean shape
+  c.moveTo(690, 150);
+  c.bezierCurveTo(800, 120, 840, 230, 790, 300);
+  c.bezierCurveTo(750, 360, 640, 360, 610, 290);
+  c.bezierCurveTo(580, 220, 610, 170, 690, 150);
+}
+
+function render() {
+  clear(ctx);
+  const common = { r: 120, light: s.light, base: s.base, highlight: s.highlight, rim: s.rim, outline: s.outline, hueShift: s.hueShift, threshold: s.threshold, bands: s.bands };
+  renderShadedSphere(ctx, { ...common, cx: 150, cy: 210, mode: 'smooth', outline: 0 });
+  renderShadedSphere(ctx, { ...common, cx: 430, cy: 210, mode: 'cel' });
+  celShadeShape(ctx, blob, { base: s.base, light: [s.light[0], s.light[1]], depth: 26, outline: s.outline });
+  ctx.fillStyle = getComputedStyle(document.body).color;
+  ctx.font = '600 14px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('smooth', 150, 360);
+  ctx.fillText('cel (toon)', 430, 360);
+  ctx.fillText('painted 2D shadow', 710, 360);
+
+  // Palette swatches: base | shadow | highlight
+  ctx.textAlign = 'left';
+  ctx.font = '12px system-ui';
+  let x = 30;
+  for (const [name, base] of Object.entries(SWATCHES)) {
+    const opts = name === 'skin' ? SKIN_SHADOW : {};
+    const sh = s.hueShift ? shadowColor(base, opts) : shadowColor(base, { hueShift: 0, saturate: 0 });
+    [base, sh, highlightColor(base)].forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(x + i * 42, 410, 40, 60);
+    });
+    ctx.fillStyle = getComputedStyle(document.body).color;
+    ctx.fillText(name, x, 490);
+    ctx.fillStyle = '#888';
+    ctx.fillText('base · shadow · hi', x, 506);
+    x += 142;
+  }
+}
+
+let dragging = false;
+canvas.addEventListener('pointerdown', (e) => { dragging = true; moveLight(e); });
+addEventListener('pointerup', () => (dragging = false));
+canvas.addEventListener('pointermove', (e) => dragging && moveLight(e));
+function moveLight(e) {
+  const r = canvas.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width) * 900 - 430;
+  const y = ((e.clientY - r.top) / r.height) * 560 - 210;
+  s.light = [x / 120, y / 120, 0.7];
+  render();
+}
+
+const panel = document.getElementById('controls');
+heading(panel, 'Light');
+slider(panel, { label: 'Shadow threshold', min: -0.8, max: 0.8, step: 0.01, value: s.threshold, onInput: (v) => { s.threshold = v; render(); } });
+select(panel, { label: 'Tones', options: [['2', '2 tones (base + shadow)'], ['3', '3 tones (+ deep shadow)']], value: '2', onChange: (v) => { s.bands = Number(v); render(); } });
+checkbox(panel, { label: 'Specular highlight', checked: true, onChange: (v) => { s.highlight = v; render(); } });
+checkbox(panel, { label: 'Rim light', checked: false, onChange: (v) => { s.rim = v; render(); } });
+checkbox(panel, { label: 'Hue-shifted shadows', checked: true, onChange: (v) => { s.hueShift = v; render(); } });
+slider(panel, { label: 'Outline width', min: 0, max: 8, step: 0.5, value: s.outline, onInput: (v) => { s.outline = v; render(); } });
+heading(panel, 'Material');
+const wrap = document.createElement('label');
+wrap.className = 'check';
+const color = Object.assign(document.createElement('input'), { type: 'color', value: s.base });
+color.addEventListener('input', () => { s.base = color.value; render(); });
+wrap.append(color, document.createTextNode('Base color'));
+panel.append(wrap);
+const tip = document.createElement('p');
+tip.style.fontSize = '13px';
+tip.textContent = 'Tip: drag on the canvas to move the light.';
+panel.append(tip);
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lip Flap and Blinks</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 6 · Limited animation: lip flap, blinks and holds</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas><div class="hud" id="hud"></div></div>
+      <div class="notes">
+        <h3>What to notice</h3>
+        <ul>
+          <li><b>Lip flap</b> (kuchipaku) uses only three mouth drawings: closed, half and open. The audience accepts it as speech, and most TV anime dialogue is animated this way.</li>
+          <li><b>Vowel mode</b> uses the five Japanese vowel shapes A / I / U / E / O. It's more convincing but takes more drawings.</li>
+          <li>Only the mouth and eyes move. The rest of the face is one <b>held</b> drawing. Holding most of the frame and animating a few small parts is the core budget trick of anime.</li>
+          <li>The blink uses 6 frames on ones: open, half, closed, closed, half, open. Fast blinks feel alive, and slow ones read as sleepy or deliberate.</li>
+        </ul>
+        <p>Code: <code>textToVisemes()</code> in <code>src/character/mouth.js</code>, <code>blinkOpenness()</code> in <code>eyes.js</code>.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, heading, select, textInput, buttons, slider } from './shared/ui.js';
+import { drawAnimeHead, DEFAULT_FACE } from '../src/character/face.js';
+import { drawMouth, textToVisemes, MOUTH_SHAPES } from '../src/character/mouth.js';
+import { blinkOpenness } from '../src/character/eyes.js';
+import { Track, stepTime } from '../src/core/keyframes.js';
+
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, 760, 720);
+const hud = document.getElementById('hud');
+const s = { text: 'konnichiwa! watashi no namae wa sakura desu.', mode: 'vowels', rate: 8, blinkInterval: 3, hairColor: '#7a5cff' };
+let track, start = performance.now();
+
+function rebuild() {
+  track = new Track(textToVisemes(s.text, { rate: s.rate, mode: s.mode }));
+  start = performance.now();
+}
+
+function frame(now) {
+  clear(ctx);
+  const t = (now - start) / 1000;
+  const loopT = t % (track.duration + 1);
+  const mouth = track.valueAt(stepTime(loopT, 24, 1));
+  drawAnimeHead(ctx, {
+    ...DEFAULT_FACE, x: 380, y: 200, scale: 1.3, hairStyle: 'long', hairColor: s.hairColor, eyeColor: '#c0476b',
+    expression: 'neutral', mouth, openness: blinkOpenness(t, { interval: s.blinkInterval }),
+  });
+  // Mouth chart strip
+  const shapes = s.mode === 'vowels' ? ['closed', 'A', 'I', 'U', 'E', 'O'] : ['closed', 'half', 'A'];
+  shapes.forEach((sh, i) => {
+    const x = 380 + (i - (shapes.length - 1) / 2) * 90, y = 670;
+    ctx.fillStyle = sh === mouth ? 'rgba(217,79,138,0.18)' : 'rgba(128,120,150,0.1)';
+    ctx.beginPath();
+    ctx.roundRect(x - 38, y - 40, 76, 72, 10);
+    ctx.fill();
+    drawMouth(ctx, { x, y: y - 14, width: 60, shape: sh });
+    ctx.fillStyle = '#8a7fa0';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(sh, x, y + 24);
+  });
+  hud.textContent = `t = ${loopT.toFixed(2)}s · mouth: ${mouth} · keys: ${track.keys.length} mouth drawings placed`;
+  requestAnimationFrame(frame);
+}
+
+const panel = document.getElementById('controls');
+heading(panel, 'Dialogue');
+textInput(panel, { label: 'Line (romanized)', value: s.text, multiline: true, onInput: (v) => { s.text = v; rebuild(); } });
+select(panel, { label: 'Mouth system', options: [['vowels', 'Vowels A I U E O'], ['flap', 'TV lip flap (3 shapes)']], value: s.mode, onChange: (v) => { s.mode = v; rebuild(); } });
+slider(panel, { label: 'Mouth changes / sec', min: 4, max: 12, step: 1, value: s.rate, format: (v) => `${v} (every ${Math.round(24 / v)} frames)`, onInput: (v) => { s.rate = v; rebuild(); } });
+slider(panel, { label: 'Blink every (s)', min: 1, max: 6, step: 0.5, value: s.blinkInterval, onInput: (v) => (s.blinkInterval = v) });
+buttons(panel, [{ label: '↺ Restart line', primary: true, onClick: rebuild }]);
+rebuild();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

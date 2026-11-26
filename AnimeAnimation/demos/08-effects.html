@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anime Effects Lab</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 9 · Action effects: smears, speed lines, impact frames</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas><div class="hud" id="hud"></div></div>
+      <div class="notes">
+        <h3>The shot, beat by beat</h3>
+        <ol>
+          <li><b>Anticipation</b> (frames 0–14): the orb pulls back and holds. The hold builds tension.</li>
+          <li><b>Action</b> (3–4 frames): it crosses the screen. Each frame is a <b>smear</b>, so the movement reads even with almost no in-betweens.</li>
+          <li><b>Impact</b> (2 frames): an inverted <b>impact frame</b> followed by a screen shake.</li>
+          <li><b>Follow-through</b>: <b>focus lines</b> that boil (re-drawn on threes with a new random seed), and sparkles.</li>
+        </ol>
+        <p>Turn effects off one at a time to see what each contributes. Without them it's just a dot moving across the screen.</p>
+        <p>Code: <code>src/effects/speedLines.js</code>, <code>src/utils/random.js</code>.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, heading, checkbox, buttons, slider } from './shared/ui.js';
+import { Track } from '../src/core/keyframes.js';
+import { Player } from '../src/core/player.js';
+import { drawFocusLines, drawParallelSpeedLines, applyImpactFrame, drawSmear, drawSparkle } from '../src/effects/speedLines.js';
+import { mulberry32 } from '../src/utils/random.js';
+
+const W = 900, H = 500;
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, W, H);
+const hud = document.getElementById('hud');
+const fx = { smear: true, speed: true, impact: true, shake: true, focus: true, sparkle: true, anticipation: true };
+const F = (n) => n / 24;
+
+// Orb position, keyed in FRAMES like a real exposure sheet.
+function buildX() {
+  const a = fx.anticipation;
+  return new Track([
+    { t: 0, v: 200, ease: 'easeOutCubic' },
+    { t: F(8), v: a ? 120 : 200, hold: true },    // wind-up, then HOLD
+    { t: F(14), v: a ? 120 : 200, ease: 'easeInQuad' },
+    { t: F(18), v: 700 },                          // 4-frame dash
+    { t: F(40), v: 700 },
+  ]);
+}
+let xTrack = buildX();
+const IMPACT = 18;
+
+function scene(t, frame) {
+  const x = xTrack.valueAt(t), y = 250;
+  const prevX = xTrack.valueAt(Math.max(0, t - F(1)));
+  const moving = Math.abs(x - prevX) > 40;
+  let shake = { x: 0, y: 0 };
+  if (fx.shake && frame >= IMPACT && frame < IMPACT + 8) {
+    const r = mulberry32(frame);
+    const amp = 14 * (1 - (frame - IMPACT) / 8);
+    shake = { x: (r() - 0.5) * 2 * amp, y: (r() - 0.5) * 2 * amp };
+  }
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+  // Target wall
+  ctx.fillStyle = '#9b8fb5';
+  ctx.fillRect(760, 120, 40, 260);
+  if (fx.focus && frame >= IMPACT) {
+    drawFocusLines(ctx, { cx: 720, cy: y, inner: 90, outer: 900, count: 110, seed: Math.floor(frame / 3), color: 'rgba(30,20,40,0.85)' });
+  }
+  if (fx.speed && moving) {
+    drawParallelSpeedLines(ctx, { x: 0, y: 150, width: W, height: 200, count: 26, seed: frame });
+  }
+  if (fx.smear && moving) {
+    drawSmear(ctx, { prev: { x: prevX, y }, cur: { x, y }, radius: 34 });
+  } else {
+    // Orb at rest, with a wind-up squash during anticipation
+    const squash = frame >= 8 && frame < 14 && fx.anticipation ? 0.8 : 1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(2 - squash, squash);
+    ctx.fillStyle = '#f28fb1';
+    ctx.strokeStyle = '#2a1b2a';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  if (fx.sparkle && frame >= IMPACT + 2) {
+    const r = mulberry32(Math.floor(frame / 2));
+    for (let i = 0; i < 8; i++) drawSparkle(ctx, 680 + (r() - 0.3) * 160, 120 + r() * 260, 8 + r() * 16);
+  }
+  ctx.restore();
+  if (fx.impact && (frame === IMPACT || frame === IMPACT + 1)) applyImpactFrame(ctx, { mode: frame === IMPACT ? 'invert' : 'red' });
+}
+
+const player = new Player((t, { frame }) => {
+  clear(ctx, '#fff8ef');
+  scene(t, frame);
+  const beat = frame < 8 ? 'wind-up' : frame < 14 ? 'HOLD (anticipation)' : frame < IMPACT ? 'ACTION (smear)' : frame < IMPACT + 2 ? 'IMPACT FRAME' : 'follow-through';
+  hud.textContent = `frame ${frame} · ${beat}`;
+}, { fps: 24, onN: 1, duration: F(40) });
+
+const panel = document.getElementById('controls');
+heading(panel, 'Playback');
+buttons(panel, [
+  { label: '⏯ Play / pause', primary: true, onClick: () => player.toggle() },
+  { label: '◀ frame', onClick: () => player.stepFrames(-1) },
+  { label: 'frame ▶', onClick: () => player.stepFrames(1) },
+]);
+slider(panel, { label: 'Speed', min: 0.1, max: 1, step: 0.05, value: 1, format: (v) => `${v}×`, onInput: (v) => (player.speed = v) });
+heading(panel, 'Effects');
+for (const [k, label] of [['anticipation', 'Anticipation + hold'], ['smear', 'Smear frames'], ['speed', 'Speed lines'], ['impact', 'Impact frames'], ['shake', 'Screen shake'], ['focus', 'Focus lines (boiling)'], ['sparkle', 'Sparkles']]) {
+  checkbox(panel, { label, checked: fx[k], onChange: (v) => { fx[k] = v; xTrack = buildX(); player.draw(); } });
+}
+player.play();
+</script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timing and Spacing</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 5 · Timing, spacing, and animating on twos</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas><div class="hud" id="hud"></div></div>
+      <div class="notes">
+        <h3>Experiments</h3>
+        <ol>
+          <li>Switch <b>Spacing</b> to <i>linear</i>. The ball now moves at constant speed and looks robotic, as if it weighs nothing.</li>
+          <li>Turn on <b>onion skin</b> and step frame by frame. With easing, the ghosts bunch up near the top of each arc (slow) and spread out near the ground (fast). That spacing is what gives the ball weight.</li>
+          <li>Compare <b>on ones / twos / threes</b>. Twos is the anime default: 12 drawings a second, played at 24 fps. Threes looks choppier but costs a third of the drawings. Watch the drawing count in the bar under the canvas.</li>
+          <li>Turn off <b>squash &amp; stretch</b>. The impact loses its punch.</li>
+        </ol>
+        <p>Code: <code>src/core/keyframes.js</code> (Track, stepTime, timingChart), <code>src/core/onionSkin.js</code>.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, slider, heading, select, checkbox, buttons } from './shared/ui.js';
+import { Track, drawingCount, timingChart } from '../src/core/keyframes.js';
+import { Player } from '../src/core/player.js';
+import { drawOnionSkin } from '../src/core/onionSkin.js';
+
+const W = 900, H = 520, GROUND = 440, R = 28;
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, W, H);
+const hud = document.getElementById('hud');
+const s = { spacing: 'eased', squash: true, onion: true, chart: true };
+
+function buildTracks() {
+  const down = s.spacing === 'eased' ? 'easeInQuad' : 'linear';
+  const up = s.spacing === 'eased' ? 'easeOutQuad' : 'linear';
+  return {
+    y: new Track([
+      { t: 0, v: 110, ease: down },
+      { t: 0.5, v: GROUND, ease: up },
+      { t: 0.9, v: 230, ease: down },
+      { t: 1.3, v: GROUND, ease: up },
+      { t: 1.55, v: 340, ease: down },
+      { t: 1.8, v: GROUND },
+      { t: 2.4, v: GROUND },
+    ]),
+    x: new Track([{ t: 0, v: 70, ease: 'linear' }, { t: 1.8, v: 720, ease: 'easeOutQuad' }, { t: 2.4, v: 800 }]),
+  };
+}
+let tracks = buildTracks();
+
+function ballAt(t) {
+  const x = tracks.x.valueAt(t), y = tracks.y.valueAt(t);
+  const dt = 1 / 48;
+  const vy = (tracks.y.valueAt(t + dt) - tracks.y.valueAt(Math.max(0, t - dt))) / (2 * dt);
+  let sx = 1, sy = 1;
+  if (s.squash) {
+    if (GROUND - y < 2 && t < 1.8) { sx = 1.35; sy = 0.65; }
+    else { const k = Math.min(0.35, Math.abs(vy) / 3500); sy = 1 + k; sx = 1 / (1 + k); }
+  }
+  return { x, y, sx, sy };
+}
+
+function drawBall(c, t) {
+  const b = ballAt(t);
+  c.save();
+  c.translate(b.x, b.y - R * b.sy);
+  c.scale(b.sx, b.sy);
+  c.beginPath();
+  c.arc(0, 0, R, 0, Math.PI * 2);
+  c.fillStyle = '#f28fb1';
+  c.fill();
+  // cel shadow crescent
+  c.save();
+  c.clip();
+  c.beginPath();
+  c.arc(-8, -8, R, 0, Math.PI * 2);
+  c.rect(-100, -100, 200, 200);
+  c.fillStyle = '#c86a9a';
+  c.fill('evenodd');
+  c.restore();
+  c.beginPath();
+  c.arc(0, 0, R, 0, Math.PI * 2);
+  c.lineWidth = 3;
+  c.strokeStyle = '#2a1b2a';
+  c.stroke();
+  c.restore();
+}
+
+function drawChart() {
+  // Timing chart for the first drop (top -> ground) like an animator's key sheet.
+  const frames = Math.round(0.5 * 24 / player.onN);
+  const marks = timingChart(frames, s.spacing === 'eased' ? 'easeInQuad' : 'linear');
+  const x0 = 40, y0 = 110, y1 = GROUND;
+  ctx.save();
+  ctx.strokeStyle = '#8a7fa0';
+  ctx.fillStyle = '#8a7fa0';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); ctx.stroke();
+  marks.forEach((m, i) => {
+    const y = y0 + (y1 - y0) * m;
+    const w = i === 0 || i === marks.length - 1 ? 14 : 8;
+    ctx.beginPath(); ctx.moveTo(x0 - w, y); ctx.lineTo(x0 + w, y); ctx.stroke();
+  });
+  ctx.font = '11px system-ui';
+  ctx.fillText('key', x0 + 16, y0 + 4);
+  ctx.fillText('key', x0 + 16, y1 + 4);
+  ctx.fillText('timing chart', x0 - 30, y0 - 14);
+  ctx.restore();
+}
+
+function render(t, { frame }) {
+  clear(ctx);
+  ctx.fillStyle = 'rgba(128,120,150,0.25)';
+  ctx.fillRect(0, GROUND, W, H - GROUND);
+  if (s.chart) drawChart();
+  if (s.onion) drawOnionSkin(ctx, drawBall, t, { before: 4, after: 0, step: player.onN / 24, alpha: 0.45 });
+  drawBall(ctx, t);
+  hud.textContent = `frame ${String(frame).padStart(2, '0')} / ${Math.round(player.duration * 24)}  ·  on ${['', 'ones', 'twos', 'threes'][player.onN]}  ·  drawings needed: ${drawingCount(player.duration, 24, player.onN)}`;
+}
+
+const player = new Player(render, { fps: 24, onN: 2, duration: 2.4 });
+const panel = document.getElementById('controls');
+heading(panel, 'Playback');
+buttons(panel, [
+  { label: '⏯ Play / pause', primary: true, onClick: () => player.toggle() },
+  { label: '◀ frame', onClick: () => player.stepFrames(-player.onN) },
+  { label: 'frame ▶', onClick: () => player.stepFrames(player.onN) },
+]);
+select(panel, { label: 'Animate on', options: [['1', 'ones (24 drawings/s)'], ['2', 'twos (12 drawings/s)'], ['3', 'threes (8 drawings/s)']], value: '2', onChange: (v) => { player.onN = Number(v); player.draw(); } });
+slider(panel, { label: 'Playback speed', min: 0.1, max: 1, step: 0.05, value: 1, format: (v) => `${v}×`, onInput: (v) => (player.speed = v) });
+heading(panel, 'Spacing');
+select(panel, { label: 'Spacing', options: [['eased', 'eased (gravity)'], ['linear', 'linear (robotic)']], value: 'eased', onChange: (v) => { s.spacing = v; tracks = buildTracks(); player.draw(); } });
+checkbox(panel, { label: 'Squash & stretch', checked: true, onChange: (v) => { s.squash = v; player.draw(); } });
+checkbox(panel, { label: 'Onion skin', checked: true, onChange: (v) => { s.onion = v; player.draw(); } });
+checkbox(panel, { label: 'Timing chart', checked: true, onChange: (v) => { s.chart = v; player.draw(); } });
+player.draw();
+player.play();
+</script>
+</body>
+</html>

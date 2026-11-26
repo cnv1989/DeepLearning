@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capstone Scene</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<header class="top"><a href="../index.html">← Course</a><h1>Lesson 10 · Capstone: a full cut with an exposure sheet</h1></header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="stage"><canvas id="c"></canvas><canvas id="sheet"></canvas><div class="hud" id="hud"></div></div>
+      <div class="notes">
+        <h3>How this cut is built</h3>
+        <p>The whole shot is data. Each line in <code>CUT</code> below is a <b>track</b>, and the strip under the picture is a simplified <b>exposure sheet</b> (X-sheet / timesheet): one column per frame, one row per track. Every studio plans shots this way, and every program you'll use (Clip Studio, OpenToonz, Toon Boom, Blender) has a timeline that does the same thing.</p>
+        <ol>
+          <li>She looks off-screen (hold).</li>
+          <li>Her head turns to camera, eased out.</li>
+          <li>She says a line (vowel lip-sync, blinks on top).</li>
+          <li>Surprise: a fast camera push-in with overshoot (<code>easeOutBack</code>), focus lines and a <b>held</b> reaction.</li>
+        </ol>
+        <h3>Your assignment</h3>
+        <p>Open this file and edit <code>CUT</code>. Change the line, move the surprise earlier, swap the expression to <code>angry</code>, or add a <code>tilt</code> track. Then storyboard the same cut on paper and redraw it by hand in Krita or Clip Studio, using the X-sheet as your timing guide.</p>
+      </div>
+    </div>
+    <aside class="panel" id="controls"></aside>
+  </div>
+</main>
+<script type="module">
+import { setupCanvas, clear, heading, buttons, select, checkbox } from './shared/ui.js';
+import { Track } from '../src/core/keyframes.js';
+import { Player } from '../src/core/player.js';
+import { drawAnimeHead, DEFAULT_FACE } from '../src/character/face.js';
+import { blinkOpenness } from '../src/character/eyes.js';
+import { textToVisemes } from '../src/character/mouth.js';
+import { drawFocusLines, drawSparkle } from '../src/effects/speedLines.js';
+import { mulberry32 } from '../src/utils/random.js';
+
+const F = (n) => n / 24;
+const LINE = 'ne, kiite yo... e?!';
+const TALK_START = F(30);
+
+// ---- The cut, as data. Edit me! ----
+const CUT = {
+  duration: F(108),
+  look: new Track([
+    { t: 0, v: [-0.9, 0.2], hold: true },
+    { t: F(20), v: [-0.9, 0.2], ease: 'easeOutCubic' },
+    { t: F(28), v: [0, 0] },
+  ]),
+  headX: new Track([{ t: 0, v: 400, hold: true }, { t: F(20), v: 400, ease: 'easeOutCubic' }, { t: F(28), v: 450 }]),
+  tilt: new Track([{ t: 0, v: -8, hold: true }, { t: F(20), v: -8, ease: 'easeOutBack' }, { t: F(28), v: 0, hold: true }, { t: F(78), v: 0, ease: 'easeOutBack' }, { t: F(82), v: 6 }]),
+  expression: new Track([
+    { t: 0, v: 'neutral', hold: true },
+    { t: F(28), v: 'smile', hold: true },
+    { t: F(78), v: 'surprised', hold: true },
+    { t: F(96), v: 'nervous', hold: true },
+  ]),
+  mouth: new Track([{ t: 0, v: 'closed', hold: true }, ...textToVisemes(LINE, { rate: 8 }).map((k) => ({ ...k, t: k.t + TALK_START }))]),
+  zoom: new Track([{ t: 0, v: 1, hold: true }, { t: F(78), v: 1, ease: 'easeOutBack' }, { t: F(84), v: 1.45 }]),
+  fx: new Track([{ t: 0, v: 'none', hold: true }, { t: F(78), v: 'focus', hold: true }, { t: F(96), v: 'sparkle', hold: true }]),
+};
+const mouthEnd = CUT.mouth.duration;
+
+const canvas = document.getElementById('c');
+const ctx = setupCanvas(canvas, 900, 560);
+const sheet = document.getElementById('sheet');
+const sctx = setupCanvas(sheet, 900, 150);
+const hud = document.getElementById('hud');
+const opts = { hair: '#6aa8ff' };
+
+function drawScene(t, frame) {
+  clear(ctx, '#fdf3e7');
+  // Background: simple painted classroom-ish wall + window
+  ctx.fillStyle = '#f3dfc6'; ctx.fillRect(0, 0, 900, 560);
+  ctx.fillStyle = '#bfe1ff'; ctx.fillRect(560, 60, 260, 200);
+  ctx.strokeStyle = '#c9a77f'; ctx.lineWidth = 10; ctx.strokeRect(560, 60, 260, 200);
+  ctx.beginPath(); ctx.moveTo(690, 60); ctx.lineTo(690, 260); ctx.stroke();
+
+  const zoom = CUT.zoom.valueAt(t);
+  const fx = CUT.fx.valueAt(t);
+  ctx.save();
+  ctx.translate(450, 280);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-450, -280);
+  if (fx === 'focus') drawFocusLines(ctx, { cx: 450, cy: 250, inner: 230, outer: 900, count: 120, seed: Math.floor(frame / 3), color: 'rgba(40,30,60,0.75)' });
+  const [lx, ly] = CUT.look.valueAt(t);
+  const talking = t >= TALK_START && t <= mouthEnd;
+  drawAnimeHead(ctx, {
+    ...DEFAULT_FACE, x: CUT.headX.valueAt(t), y: 240, scale: 1.25, hairStyle: 'long', hairColor: opts.hair,
+    eyeColor: '#8d4bd6', expression: CUT.expression.valueAt(t), tilt: CUT.tilt.valueAt(t),
+    mouth: talking ? CUT.mouth.valueAt(t) : null, look: { x: lx, y: ly },
+    openness: blinkOpenness(t + 1.3, { interval: 2.7 }),
+  });
+  ctx.restore();
+  if (fx === 'sparkle') {
+    const r = mulberry32(Math.floor(frame / 3));
+    for (let i = 0; i < 10; i++) drawSparkle(ctx, r() * 900, r() * 300, 6 + r() * 14);
+  }
+  // Letterbox + subtitle
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 900, 30); ctx.fillRect(0, 512, 900, 48);
+  if (talking) {
+    ctx.fillStyle = '#fff'; ctx.font = '600 20px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(LINE, 450, 543);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawSheet(frame) {
+  clear(sctx);
+  const rows = ['expression', 'mouth', 'zoom', 'fx'];
+  const total = Math.round(CUT.duration * 24);
+  const x0 = 90, cw = (900 - x0 - 10) / total, rh = 30;
+  sctx.font = '11px system-ui';
+  rows.forEach((name, r) => {
+    const y = 10 + r * rh;
+    sctx.fillStyle = '#8a7fa0';
+    sctx.fillText(name, 8, y + 18);
+    let prev = null;
+    for (let f = 0; f < total; f++) {
+      const v = CUT[name].valueAt(F(f));
+      const key = typeof v === 'number' ? v.toFixed(2) : String(v);
+      const changed = key !== prev;
+      sctx.fillStyle = changed ? '#d94f8a' : 'rgba(217,79,138,0.16)';
+      sctx.fillRect(x0 + f * cw, y + 4, Math.max(1, cw - 1), rh - 10);
+      if (changed && typeof v === 'string' && v !== 'none' && cw * 6 > 30) {
+        sctx.fillStyle = '#5b4f6e';
+        sctx.fillText(v, x0 + f * cw + 2, y + 2);
+      }
+      prev = key;
+    }
+  });
+  // frame ruler
+  sctx.fillStyle = '#8a7fa0';
+  for (let f = 0; f <= total; f += 12) sctx.fillText(String(f), x0 + f * cw, 140);
+  // playhead
+  sctx.fillStyle = '#2b2433';
+  sctx.fillRect(x0 + frame * cw, 4, 2, rows.length * rh + 6);
+}
+
+const player = new Player((t, { frame }) => {
+  drawScene(t, frame);
+  drawSheet(frame);
+  hud.textContent = `frame ${frame} / ${Math.round(CUT.duration * 24)} · expression: ${CUT.expression.valueAt(t)} · dark blocks = new drawing/key`;
+}, { fps: 24, onN: 2, duration: CUT.duration });
+
+sheet.addEventListener('pointerdown', (e) => {
+  const r = sheet.getBoundingClientRect();
+  const f = ((e.clientX - r.left) / r.width * 900 - 90) / ((900 - 100) / Math.round(CUT.duration * 24));
+  player.pause();
+  player.seek(Math.max(0, F(f)));
+});
+
+const panel = document.getElementById('controls');
+heading(panel, 'Playback');
+buttons(panel, [
+  { label: '⏯ Play / pause', primary: true, onClick: () => player.toggle() },
+  { label: '◀ frame', onClick: () => player.stepFrames(-1) },
+  { label: 'frame ▶', onClick: () => player.stepFrames(1) },
+]);
+select(panel, { label: 'Animate on', options: [['1', 'ones'], ['2', 'twos'], ['3', 'threes']], value: '2', onChange: (v) => { player.onN = Number(v); player.draw(); } });
+checkbox(panel, { label: 'Loop', checked: true, onChange: (v) => (player.loop = v) });
+const p = document.createElement('p');
+p.style.fontSize = '13px';
+p.textContent = 'Click the exposure sheet to scrub to a frame.';
+panel.append(p);
+player.play();
+</script>
+</body>
+</html>
