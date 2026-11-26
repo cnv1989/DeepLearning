@@ -32,3 +32,9 @@ Takes YAD2K configuration and weights and converts to Keras. Applies box filteri
 ![Street 1](https://github.com/cnv1989/DeepLearning/blob/master/YOLO/out/testAWS.jpg)
 ![Street 2](https://github.com/cnv1989/DeepLearning/blob/master/YOLO/out/testaws2.jpg)
 ![Street 3](https://github.com/cnv1989/DeepLearning/blob/master/YOLO/out/test.jpg)
+
+# TinyLM/
+
+### [Course: a language model in silicon](https://github.com/cnv1989/DeepLearning/tree/master/TinyLM)
+
+A Verilog refresher plus a step-by-step build of a tiny character-level language model with hard-wired ternary weights, targeting Tiny Tapeout or an iCE40 FPGA. Includes NumPy quantisation-aware training, a weights-to-Verilog generator, and self-checking testbenches that match a bit-exact Python golden model.

@@ -1,0 +1,6 @@
+# iCEBreaker v1.0 pin constraints (check against your board revision's docs)
+set_io -nowarn CLK    35
+set_io -nowarn RX      6
+set_io -nowarn TX      9
+set_io -nowarn LEDR_N 11
+set_io -nowarn LEDG_N 37

@@ -1,0 +1,50 @@
+# Tiny Tapeout project description. Compare with info.yaml in the CURRENT
+# template repo for your shuttle (fields change between versions) and copy
+# the values below across.
+project:
+  title:        "TinyLM - hard-wired character language model"
+  author:       "YOUR NAME"
+  discord:      ""
+  description:  "A 16-neuron character-level language model with ternary weights baked into logic"
+  language:     "Verilog"
+  clock_hz:     50000000
+
+  # Start with 2x2 and let the GitHub Action tell you if it fits; try 1x2 if utilisation is low.
+  tiles: "2x2"
+
+  # Must start with tt_um_ and be unique: rename to tt_um_<github_username>_tinylm
+  # (in rtl/tt_um_tinylm.v too).
+  top_module:  "tt_um_tinylm"
+
+  source_files:
+    - "project.v"
+
+pinout:
+  ui[0]: "TOKEN_IN[0]"
+  ui[1]: "TOKEN_IN[1]"
+  ui[2]: "TOKEN_IN[2]"
+  ui[3]: "TOKEN_IN[3]"
+  ui[4]: "TOKEN_IN[4]"
+  ui[5]: "PUSH (rising edge)"
+  ui[6]: "START (rising edge)"
+  ui[7]: "NOISE enable"
+
+  uo[0]: "TOKEN_OUT[0]"
+  uo[1]: "TOKEN_OUT[1]"
+  uo[2]: "TOKEN_OUT[2]"
+  uo[3]: "TOKEN_OUT[3]"
+  uo[4]: "TOKEN_OUT[4]"
+  uo[5]: "BUSY"
+  uo[6]: "VALID"
+  uo[7]: ""
+
+  uio[0]: "ASCII_OUT[0]"
+  uio[1]: "ASCII_OUT[1]"
+  uio[2]: "ASCII_OUT[2]"
+  uio[3]: "ASCII_OUT[3]"
+  uio[4]: "ASCII_OUT[4]"
+  uio[5]: "ASCII_OUT[5]"
+  uio[6]: "ASCII_OUT[6]"
+  uio[7]: "ASCII_OUT[7]"
+
+yaml_version: 6
