@@ -25,16 +25,13 @@ Two safety rails keep training stable:
 import torch
 
 
-def group_advantages(rewards, group_size, eps=1e-6):
-    """Normalize rewards within each group of completions for the same prompt.
+def group_advantages(rewards, eps=1e-6):
+    """Normalize the rewards of one group of completions for the same prompt.
 
-    rewards: (num_prompts * group_size,), ordered so each group is contiguous
-    returns: same shape; mean 0 and std 1 within each group
+    rewards: (group_size,) -> returns (group_size,) with mean 0 and std 1.
+    If every completion scored the same, all advantages are 0: nothing to learn.
     """
-    grouped = rewards.view(-1, group_size)
-    mean = grouped.mean(dim=1, keepdim=True)
-    std = grouped.std(dim=1, keepdim=True)
-    return ((grouped - mean) / (std + eps)).view(-1)
+    return (rewards - rewards.mean()) / (rewards.std() + eps)
 
 
 def kl_to_reference(policy_logprobs, reference_logprobs):
@@ -47,13 +44,20 @@ def kl_to_reference(policy_logprobs, reference_logprobs):
     return torch.exp(log_ratio) - log_ratio - 1
 
 
-def grpo_loss(policy_logprobs, old_logprobs, reference_logprobs, advantages, clip=0.2, kl_weight=0.05):
-    """The GRPO objective (to minimize).
+def masked_mean(values, mask):
+    mask = mask.float()
+    return (values * mask).sum() / mask.sum().clamp(min=1)
 
-    policy_logprobs:    (batch, completion_len) under the model being trained (with gradients)
-    old_logprobs:       (batch, completion_len) under the model that sampled the data
-    reference_logprobs: (batch, completion_len) under the frozen reference model
-    advantages:         (batch,) one number per completion, shared by all its tokens
+
+def grpo_loss(policy_logprobs, old_logprobs, reference_logprobs, advantages, mask,
+              clip=0.2, kl_weight=0.05):
+    """The GRPO objective (to minimize) for one group.
+
+    policy_logprobs:    (group, completion_len) under the model being trained (with gradients)
+    old_logprobs:       (group, completion_len) under the model that sampled the data
+    reference_logprobs: (group, completion_len) under the frozen reference model
+    advantages:         (group,) one number per completion, shared by all its tokens
+    mask:               (group, completion_len) True for real tokens, False for padding
 
     Returns (loss, stats) where stats is a dict of numbers worth logging.
     """
@@ -65,14 +69,14 @@ def grpo_loss(policy_logprobs, old_logprobs, reference_logprobs, advantages, cli
 
     # PPO's pessimistic choice: take the smaller of the clipped and unclipped objective.
     objective = torch.minimum(ratio * advantages, clipped_ratio * advantages)
-    policy_loss = -objective.mean()
+    policy_loss = -masked_mean(objective, mask)
 
-    kl = kl_to_reference(policy_logprobs, reference_logprobs).mean()
+    kl = masked_mean(kl_to_reference(policy_logprobs, reference_logprobs), mask)
     loss = policy_loss + kl_weight * kl
 
     stats = {
         "policy_loss": policy_loss.item(),
         "kl": kl.item(),
-        "clipped_fraction": ((ratio - 1).abs() > clip).float().mean().item(),
+        "clipped_fraction": masked_mean(((ratio - 1).abs() > clip).float(), mask).item(),
     }
     return loss, stats

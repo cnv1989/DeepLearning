@@ -1,13 +1,25 @@
 """Reward functions: score generated text with a number. Higher is better.
 
-Every reward function takes a list of prompts and a list of completions
-(both plain strings) and returns one float per completion.
+Every reward function is called as
+
+    reward(prompts, completions, answers) -> list of floats
+
+with one entry per completion. `answers` holds the known-correct answer for
+each prompt when there is one (task data), and None otherwise.
 
 Built-in rewards (choose them with --reward on the command line):
 
+  Verifiable rewards, for prompts with a known answer:
+    exact_match        1.0 if the completion equals the answer, else 0.0
+    similarity         0..1, how close the completion is to the answer
+                       (partial credit, which helps small models get started)
+
+  Text-quality rewards, for open-ended prompts:
     known_words        fraction of words that appear in the training text
     distinct_words     fraction of words that are not repeats
     keyword=WORD       1.0 if the completion contains WORD, else 0.0
+
+  Learned:
     model=PATH         score from a trained reward model (see reward_model.py)
 
 Several rewards can be combined; their scores are added together.
@@ -18,6 +30,7 @@ word is real. Adding `distinct_words` closes that loophole. Always read
 samples, not just reward curves.
 """
 
+import difflib
 import re
 
 import torch
@@ -29,6 +42,17 @@ WORD_PATTERN = re.compile(r"[a-z']+")
 
 def words_in(text):
     return WORD_PATTERN.findall(text.lower())
+
+
+class ExactMatchReward:
+    def __call__(self, prompts, completions, answers):
+        return [float(c.strip() == a.strip()) for c, a in zip(completions, answers)]
+
+
+class SimilarityReward:
+    def __call__(self, prompts, completions, answers):
+        return [difflib.SequenceMatcher(None, c.strip(), a.strip()).ratio()
+                for c, a in zip(completions, answers)]
 
 
 class KnownWordsReward:
@@ -44,7 +68,7 @@ class KnownWordsReward:
         text = tokenizer.decode(tokens.tolist())
         return cls(words_in(text))
 
-    def __call__(self, prompts, completions):
+    def __call__(self, prompts, completions, answers):
         scores = []
         for text in completions:
             words = words_in(text)
@@ -56,7 +80,7 @@ class KnownWordsReward:
 class DistinctWordsReward:
     """Fraction of words in the completion that are unique. Penalizes repetition."""
 
-    def __call__(self, prompts, completions):
+    def __call__(self, prompts, completions, answers):
         scores = []
         for text in completions:
             words = words_in(text)
@@ -70,7 +94,7 @@ class KeywordReward:
     def __init__(self, keyword):
         self.keyword = keyword.lower()
 
-    def __call__(self, prompts, completions):
+    def __call__(self, prompts, completions, answers):
         return [1.0 if self.keyword in words_in(text) else 0.0 for text in completions]
 
 
@@ -85,7 +109,7 @@ class LearnedReward:
         self.device = device
 
     @torch.no_grad()
-    def __call__(self, prompts, completions):
+    def __call__(self, prompts, completions, answers):
         scores = self.model.score_texts(self.tokenizer, prompts, completions, self.device)
         return scores.tolist()
 
@@ -96,10 +120,12 @@ class SumOfRewards:
     def __init__(self, rewards):
         self.rewards = rewards
 
-    def __call__(self, prompts, completions):
+    def __call__(self, prompts, completions, answers=None):
+        if answers is None:
+            answers = [None] * len(completions)
         total = [0.0] * len(completions)
         for reward in self.rewards:
-            for i, score in enumerate(reward(prompts, completions)):
+            for i, score in enumerate(reward(prompts, completions, answers)):
                 total[i] += score
         return total
 
@@ -109,7 +135,12 @@ def build_reward(specs, data_dir, tokenizer, device):
     rewards = []
     for spec in specs:
         name, _, argument = spec.partition("=")
-        if name == "known_words":
+        if name == "exact_match":
+            rewards.append(ExactMatchReward())
+        elif name == "similarity":
+            rewards.append(SimilarityReward())
+        elif name == "known_words":
+            assert data_dir, "the known_words reward needs --data"
             rewards.append(KnownWordsReward.from_dataset(data_dir, tokenizer))
         elif name == "distinct_words":
             rewards.append(DistinctWordsReward())

@@ -8,19 +8,17 @@ You can write this file by hand, collect it from people, or generate it
 automatically with make_preferences.py.
 """
 
-import json
 import random
+
+from slm.data import load_jsonl, save_jsonl
 
 
 def save_preferences(path, pairs):
-    with open(path, "w", encoding="utf-8") as f:
-        for pair in pairs:
-            f.write(json.dumps(pair) + "\n")
+    save_jsonl(path, pairs)
 
 
 def load_preferences(path):
-    with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+    return load_jsonl(path)
 
 
 def split_preferences(pairs, val_fraction=0.1, seed=0):

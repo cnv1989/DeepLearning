@@ -1,4 +1,4 @@
-"""Reading tokenized datasets made by prepare.py.
+"""Reading tokenized datasets made by prepare.py, and JSON-lines files.
 
 A dataset directory contains:
     train.bin       all training token ids, one after another
@@ -54,3 +54,15 @@ def get_batch(tokens, batch_size, block_size, device):
     """
     windows = random_windows(tokens, batch_size, block_size + 1, device)
     return windows[:, :-1], windows[:, 1:]
+
+
+def load_jsonl(path):
+    """Read a JSON-lines file: one JSON object per line."""
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def save_jsonl(path, records):
+    with open(path, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")

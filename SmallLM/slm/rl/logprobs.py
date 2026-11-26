@@ -31,6 +31,18 @@ def completion_logprobs(model, tokens, prompt_len):
     return token_logprobs(model, tokens)[:, prompt_len - 1:]
 
 
+def completion_mask(completions, eos_id):
+    """Which completion tokens count: everything up to and including the first EOS.
+
+    `generate` pads finished sequences with EOS; those padding tokens weren't
+    really chosen by the model, so they're excluded from the loss.
+    completions: (batch, completion_len) -> bool mask of the same shape
+    """
+    is_eos = completions == eos_id
+    eos_seen_before = (is_eos.cumsum(dim=1) - is_eos.long()) > 0
+    return ~eos_seen_before
+
+
 def truncate_pairs(prompts, completions, max_len):
     """Make every prompt + completion fit in `max_len` tokens.
 

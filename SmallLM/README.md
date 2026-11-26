@@ -1,154 +1,230 @@
 # SmallLM
 
-A small GPT-style language model built from scratch in PyTorch, plus the
-reinforcement-learning (RL) stages used to fine-tune modern language models.
-The code is written to be read: short files, plain names, and comments that
-explain *why* as well as *what*.
+A complete pipeline for training a language model, built from scratch in
+PyTorch and written to be read. It covers every stage modern LLMs go through,
+from a tokenizer to reinforcement learning, and the smallest version trains on
+a laptop CPU in minutes.
 
 ```
-            pretraining                         reinforcement learning
-  text ──► prepare.py ──► train.py ──► ckpt.pt ─┬─► train_grpo.py ──────────► grpo.pt
-                                                │      ▲ reward: rules or a learned model
-                                                │      │
-                                                └─► make_preferences.py ──► preferences.jsonl
-                                                                              │
-                                                       train_reward_model.py ◄┤
-                                                       train_dpo.py ◄─────────┘──► dpo.pt
+  raw text
+     │  prepare.py ─────────── clean, deduplicate, train a tokenizer, encode
+     ▼
+  token ids
+     │  train.py ───────────── PRETRAINING: predict the next token
+     ▼
+  base model      out/ckpt.pt
+     │  train_sft.py ───────── SUPERVISED FINE-TUNING: learn to answer prompts
+     ▼
+  chat model      out/sft/ckpt.pt
+     │  train_grpo.py ──────── REINFORCEMENT LEARNING against a reward, or
+     │  train_dpo.py ───────── PREFERENCE LEARNING from (chosen, rejected) pairs
+     ▼
+  tuned model     out/grpo.pt, out/dpo.pt
+                  evaluate.py, sample.py work with every checkpoint
 ```
 
-## Quick start
+## Quick start (CPU, about 10 minutes)
 
 ```bash
 cd SmallLM
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 1. Download and tokenize Shakespeare
-python prepare.py --dataset shakespeare --tokenizer char
+python prepare.py --dataset shakespeare --tokenizer char         # 1. data
+python train.py --config configs/tiny.json --data data/shakespeare_char   # 2. pretrain (~6 min)
+python sample.py --prompt "ROMEO:"                                # generate text
 
-# 2. Pretrain (~0.8M params, ~6 min on a 4-core CPU)
-python train.py --data data/shakespeare_char --preset tiny --max-iters 1500
-
-# 3. Generate text
-python sample.py --prompt "ROMEO:" --tokens 300
+python make_task_data.py --data data/shakespeare_char           # 3. tasks with known answers
+python train_sft.py --ckpt out/ckpt.pt --train-file data/tasks/train.jsonl --max-iters 1500
+python evaluate.py --ckpt out/sft/ckpt.pt --tasks data/tasks/test.jsonl
+python sample.py --ckpt out/sft/ckpt.pt --chat --prompt "Reverse: flower" --temperature 0
 ```
 
-## Reinforcement learning
+### Results from a test run (4-core CPU)
 
-Pretraining teaches the model to imitate text. RL teaches it to produce text
-that scores well on a goal you choose. Both methods below keep the model close
-to a frozen copy of the pretrained model (the *reference*), so it doesn't forget
-how to write while chasing the goal.
+| Stage | Result |
+|---|---|
+| Pretrain `tiny` (0.86M params, 1,500 steps, 6.5 min) | validation loss **1.59**, perplexity 4.9 (the earlier GPT-2-style model reached 1.91 at the same size) |
+| SFT on synthetic tasks (1,500 steps, 2 min) | accuracy on unseen words **0% → 100%** (uppercase, reverse, repeat, first letter) |
+| GRPO on open-ended text (100 steps) | reward 1.78 → 1.85 (out of 2.0) |
+| GRPO on tasks, from a half-trained SFT model | stable, but no accuracy gain in 400 steps (23.5% → 22.5%); see [GRPO tips](#grpo-tips) |
 
-### GRPO: optimize a reward directly
+Pretraining output after 6 minutes:
+
+```
+ROMEO:
+He good to hear their all-would have shaped that
+We did if an to our kiss in tell of that.
+```
+
+## The stages
+
+### 1. Data and tokenizers (`prepare.py`)
 
 ```bash
-python train_grpo.py --ckpt out/ckpt.pt --data data/shakespeare_char \
-    --reward known_words --reward distinct_words --steps 150 --lr 3e-5
-python sample.py --ckpt out/grpo.pt --prompt "ROMEO:"
+python prepare.py --dataset shakespeare --tokenizer char
+python prepare.py --dataset tinystories --tokenizer bpe --vocab-size 4096
+python prepare.py --input my_corpus.txt --tokenizer gpt2
+python prepare.py --input folder_of_txt_files/ --tokenizer bpe
+python prepare.py --input documents.jsonl --tokenizer bpe      # one {"text": ...} per line
 ```
 
-For every prompt, the model writes a group of completions. Each completion is
-scored and compared with the group average, and the model is pushed toward the
-above-average ones. In a 150-step CPU run (~5 min), the reward rose from 1.55 to
-1.75 out of 2.0.
+Documents are cleaned, exact duplicates removed, and an end-of-text token (EOS)
+placed after each one so the model learns where documents end.
 
-Built-in rewards (`slm/rl/rewards.py`); repeat `--reward` to add several together:
+| `--tokenizer` | What it is |
+|---|---|
+| `char` | one token per character |
+| `bpe` | byte-level BPE **trained on your data** (`slm/bpe.py`), the same algorithm GPT-2 and Llama use. 2 seconds for a 2,048-token vocabulary on Shakespeare, giving 2.9 characters per token |
+| `gpt2` | OpenAI's pretrained 50,257-token BPE via `tiktoken` |
+
+### 2. Pretraining (`train.py`)
+
+```bash
+python train.py --config configs/tiny.json --data data/shakespeare_char           # CPU
+python train.py --config configs/small.json --data data/tinystories_bpe           # one GPU
+torchrun --nproc_per_node 4 train.py --config configs/medium.json --data ...      # 4 GPUs
+```
+
+| Feature | How |
+|---|---|
+| Configs | `configs/*.json`; any setting can also be given as a flag (`--max-iters 3000`) |
+| Multi-GPU | launch with `torchrun`; uses DistributedDataParallel (`slm/distributed.py`) |
+| Mixed precision | `--dtype auto` (bfloat16 on new GPUs, float16 with loss scaling on older ones) |
+| Big batches on small GPUs | `--grad-accum 8` accumulates gradients over 8 micro-batches |
+| Less memory | `--activation-checkpointing` recomputes activations instead of storing them |
+| Speed | `--compile` (`torch.compile`) on GPUs |
+| Checkpoints | `out/ckpt.pt` (best), `out/last.pt` (latest); continue with `--resume` |
+| Metrics | `out/metrics.jsonl` every step; add `--wandb` for Weights & Biases |
+
+### 3. Supervised fine-tuning (`train_sft.py`)
+
+Teaches the model to answer. Data is JSON lines of `{"prompt", "response"}`,
+or `{"messages": [{"role", "content"}, ...]}` for multi-turn chats. It's
+rendered with a simple chat template:
+
+```
+User: Reverse: flower
+Assistant: rewolf<|endoftext|>
+```
+
+Only the assistant's reply is trained on (loss masking). `make_task_data.py`
+generates tasks with checkable answers, with test words kept out of training.
+
+### 4. Reinforcement learning
+
+**GRPO** (`train_grpo.py`): for each prompt, sample a group of answers, score them,
+and push the model toward the above-average ones. A KL penalty keeps it close
+to where it started.
+
+```bash
+# Verifiable rewards: task prompts with known answers
+python train_grpo.py --ckpt out/sft/ckpt.pt --prompts data/tasks/train.jsonl \
+    --reward exact_match --reward similarity --lr 3e-5
+
+# Open-ended text with rule-based rewards
+python train_grpo.py --ckpt out/ckpt.pt --data data/shakespeare_char \
+    --reward known_words --reward distinct_words --lr 3e-5
+```
 
 | Reward | Scores |
 |---|---|
+| `exact_match` | 1 if the answer is exactly right |
+| `similarity` | 0–1 partial credit for being close to the answer |
 | `known_words` | fraction of words that appear in the training text |
 | `distinct_words` | fraction of words that aren't repeats |
-| `keyword=love` | 1 if the word appears, else 0 |
+| `keyword=love` | 1 if the word appears |
 | `model=out/reward_model.pt` | a learned reward model |
 
-**Watch out for reward hacking.** With only `known_words`, the model soon learns
-to write "the the the…", since every word is real. Adding `distinct_words`
-closes that loophole. Read the samples, not just the reward curve.
-
-### Preferences, reward models and DPO
-
-Real RLHF starts from people comparing two answers. `make_preferences.py` fakes
-that by using a rule-based reward as the judge. You can also write
-`preferences.jsonl` yourself; each line is `{"prompt", "chosen", "rejected"}`.
+**Preferences, reward models and DPO**: real RLHF starts from people choosing
+the better of two answers. `make_preferences.py` uses a rule-based reward as
+the judge; you can also write `{"prompt", "chosen", "rejected"}` lines yourself.
 
 ```bash
-# Make 800 (chosen, rejected) pairs
-python make_preferences.py --ckpt out/ckpt.pt --data data/shakespeare_char \
-    --reward known_words --reward distinct_words --pairs 800
-
-# Option A: learn a reward model, then optimize it with GRPO (classic RLHF)
-python train_reward_model.py --ckpt out/ckpt.pt --prefs data/preferences.jsonl
-python train_grpo.py --ckpt out/ckpt.pt --data data/shakespeare_char --reward model=out/reward_model.pt
-
-# Option B: DPO, which learns from the pairs directly with no reward model and no sampling
-python train_dpo.py --ckpt out/ckpt.pt --prefs data/preferences.jsonl --lr 3e-5
-python sample.py --ckpt out/dpo.pt --prompt "ROMEO:"
+python make_preferences.py --data data/shakespeare_char --reward known_words --reward distinct_words
+python train_reward_model.py            # then: train_grpo.py --reward model=out/reward_model.pt
+python train_dpo.py --lr 3e-5           # or skip the reward model entirely with DPO
 ```
 
-On the tiny model with 800 pairs, the reward model reached 57% validation accuracy
-after 3 epochs, and DPO reached 65%. More pairs and a bigger model raise both.
+#### GRPO tips
+
+* **The model must sometimes succeed.** GRPO learns from differences within a
+  group. If all 8 attempts fail, there's nothing to learn. Start from a decent
+  SFT model, and add `similarity` for partial credit.
+* **Keep the learning rate low.** On the tiny model, 1e-4 moved it 1.4 nats per
+  token from the reference in a single step. 3e-5 is stable. Watch `kl`.
+* **Watch for reward hacking.** With only `known_words`, the model learns to
+  write "the the the…". `distinct_words` closes that loophole. Read samples.
+* In the test run, longer SFT solved the tasks outright, so RL had nothing
+  left to fix. RL pays off when the reward captures something SFT data can't.
+
+### 5. Evaluation and generation
+
+```bash
+python evaluate.py --ckpt out/ckpt.pt --data data/shakespeare_char      # perplexity
+python evaluate.py --ckpt out/sft/ckpt.pt --tasks data/tasks/test.jsonl # accuracy per task
+python sample.py --ckpt out/sft/ckpt.pt --chat                          # interactive chat
+```
+
+## The model (`slm/model.py`)
+
+A Llama-style decoder-only transformer:
+
+| Component | Why |
+|---|---|
+| RMSNorm | simpler and cheaper than LayerNorm |
+| Rotary position embeddings (RoPE) | encode relative position directly in attention |
+| SwiGLU feed-forward | trains better than a GELU MLP at the same size |
+| Grouped-query attention (`n_kv_head`) | query heads share key/value heads, shrinking the KV cache |
+| KV cache | generation reuses earlier keys/values, so each new token costs one position |
+| Tied embeddings | input and output share one matrix, saving parameters |
+
+| Config | Layers | Heads (query/kv) | Width | Context | Params (char / 4k BPE / GPT-2 vocab) |
+|---|---|---|---|---|---|
+| `tiny` | 4 | 4 / 4 | 128 | 128 | 0.86M / 1.4M / 7.3M |
+| `small` | 6 | 6 / 2 | 384 | 256 | 9.5M / 11M / 29M |
+| `medium` | 12 | 12 / 4 | 768 | 1024 | 76M / 79M / 114M |
+
+`small` is a good size for a single GPU, and `medium` for several (it uses `--compile` and `--grad-accum 8`).
 
 ## Code map
 
 | File | What it does |
 |---|---|
 | **Scripts** | |
-| `prepare.py` | Download or read text, tokenize it, write `train.bin`, `val.bin` and `tokenizer.json` |
-| `train.py` | Pretrain with next-token prediction |
-| `sample.py` | Generate text from any checkpoint |
-| `train_grpo.py` | RL fine-tuning against a reward |
-| `make_preferences.py` | Build preference pairs using a reward as the judge |
-| `train_reward_model.py` | Learn a reward model from preference pairs |
-| `train_dpo.py` | Fine-tune on preference pairs with DPO |
+| `prepare.py` | Read, clean and deduplicate text; train or pick a tokenizer; write `train.bin` / `val.bin` |
+| `train.py` | Pretraining |
+| `train_sft.py` | Supervised fine-tuning |
+| `make_task_data.py` | Synthetic tasks with checkable answers |
+| `train_grpo.py` | GRPO reinforcement learning |
+| `make_preferences.py` | Preference pairs judged by a reward |
+| `train_reward_model.py` | Learn a reward model from preferences |
+| `train_dpo.py` | Direct Preference Optimization |
+| `evaluate.py` | Perplexity and task accuracy |
+| `sample.py` | Text generation and chat |
 | **Library: `slm/`** | |
-| `model.py` | The transformer: embeddings, causal self-attention, MLP blocks, generation |
-| `tokenizer.py` | Character-level and GPT-2 BPE tokenizers |
-| `data.py` | Load tokenized data and sample batches |
-| `checkpoint.py` | Save and load a model together with its tokenizer |
-| `utils.py` | Device selection and the learning-rate schedule |
+| `model.py` | The transformer, KV cache and generation |
+| `tokenizer.py`, `bpe.py` | Character, trained-BPE and GPT-2 tokenizers; the BPE training algorithm |
+| `data.py` | Load token files, sample batches, read/write JSON lines |
+| `trainer.py` | The training loop shared by pretraining and SFT |
+| `config.py` | Settings from defaults, JSON configs and flags |
+| `distributed.py` | Multi-GPU setup |
+| `metrics.py` | Metrics logging |
+| `sft.py` | Chat template, loss masking, SFT batches, reply generation |
+| `tasks.py` | Synthetic task definitions |
+| `checkpoint.py`, `utils.py` | Save/load; device, precision and LR schedule |
 | **RL: `slm/rl/`** | |
-| `logprobs.py` | How likely a model is to produce given tokens; padding helpers |
-| `rewards.py` | Rule-based rewards and how they're combined |
-| `reward_model.py` | A transformer with a scoring head, trained with the Bradley-Terry loss |
-| `grpo.py` | Group-relative advantages, the clipped objective and the KL penalty |
-| `dpo.py` | The DPO loss |
-| `preferences.py` | Read and write preference pairs |
+| `logprobs.py` | Token log-probabilities, completion masks, padding |
+| `rewards.py` | Verifiable, rule-based and learned rewards |
+| `grpo.py` | Group-relative advantages, clipped objective, KL penalty |
+| `reward_model.py`, `dpo.py`, `preferences.py` | Reward model, DPO loss, preference data |
+| **Tests: `tests/`** | `pytest` (21 tests: tokenizers, KV cache, causality, loss masking, RL losses) |
 
-All paths are relative to `SmallLM/`, and the scripts are run from there.
+Suggested reading order: `slm/model.py` → `train.py` + `slm/trainer.py` →
+`slm/sft.py` → `slm/rl/grpo.py` + `train_grpo.py`.
 
-Start with `slm/model.py`, then `train.py`. For RL, read `slm/rl/grpo.py`, then
-`train_grpo.py`.
-
-## Model sizes
-
-| Preset | Layers | Heads | Width | Context | Params (char vocab) | Where |
-|---|---|---|---|---|---|---|
-| `tiny` | 4 | 4 | 128 | 128 | ~0.8M | CPU |
-| `small` | 6 | 6 | 384 | 256 | ~10M | GPU / Apple Silicon |
-| `medium` | 8 | 8 | 512 | 512 | ~25M | GPU |
-
-Any field can be overridden, e.g. `--n-layer 8 --n-embd 256`. The device is
-picked automatically (CUDA, then Apple Silicon, then CPU); set `--device` to
-choose. On CUDA, training runs in bfloat16; add `--compile` for extra speed.
-
-## Other data
+## Tests
 
 ```bash
-# TinyStories: simple English stories. Small models become coherent on this.
-python prepare.py --dataset tinystories --tokenizer bpe
-python train.py --data data/tinystories_bpe --preset small --max-iters 10000
-
-# Your own text
-python prepare.py --input my_corpus.txt --tokenizer bpe
+python -m pytest
 ```
-
-The BPE tokenizer has 50,257 tokens, so for a small model the embedding table
-is most of the parameters, and it needs more data and steps than char-level.
-
-## Ideas for next steps
-
-- Supervised fine-tuning (SFT) on prompt/response pairs before RL
-- Modern components: RoPE, RMSNorm, SwiGLU, grouped-query attention
-- A KV cache for faster generation (and faster GRPO sampling)
-- A PPO trainer with a value head, to compare with GRPO
