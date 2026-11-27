@@ -38,3 +38,9 @@ Takes YAD2K configuration and weights and converts to Keras. Applies box filteri
 ### [Course: a language model in silicon](https://github.com/cnv1989/DeepLearning/tree/master/TinyLM)
 
 A Verilog refresher plus a step-by-step build of a tiny character-level language model with hard-wired ternary weights, targeting Tiny Tapeout or an iCE40 FPGA. Includes NumPy quantisation-aware training, a weights-to-Verilog generator, and self-checking testbenches that match a bit-exact Python golden model.
+
+# TinyPilot/
+
+### [Drone rate controller as a hard-wired neural network](https://github.com/cnv1989/DeepLearning/tree/master/TinyPilot)
+
+A quadcopter simulator, a Betaflight-style PID teacher, and a behaviour-cloning + DAgger trained integer network in Verilog with SPI and Oneshot125 ESC outputs, verified bit-exactly in closed-loop flight. Includes an honest comparison with PID.
